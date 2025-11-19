@@ -345,4 +345,129 @@ $window.ShowDialog() | Out-Null
     final_choice = captured_output.splitlines()[-1].strip() if captured_output else ""
     return final_choice
 
+import subprocess
+import tempfile
+import os
+import sys
 
+def pypwsh_folderbrowse(initial_path="", description="Select a Folder", title="Folder Browser"):
+    ps_template = r"""
+param(
+    [string]$InitialPath,
+    [string]$Description,
+    [string]$Title
+)
+
+Add-Type -AssemblyName PresentationFramework, WindowsBase, System.Xaml, System.Windows.Forms
+
+$xaml = @"
+<Window
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Folder Browser"
+    Width="500" Height="250"
+    ResizeMode="NoResize">
+    <StackPanel Margin="15">
+        <Label Content="Selected Folder Path:" Margin="0,0,0,5"/>
+        <TextBox
+            x:Name="PathTextBox"
+            Height="60"
+            TextWrapping="Wrap"
+            AcceptsReturn="True"
+            VerticalScrollBarVisibility="Auto"
+            Margin="0,0,0,15" />
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="100"/>
+            </Grid.ColumnDefinitions>
+            <Button x:Name="BrowseButton" Content="Browse Folder" Grid.Column="0" Margin="0,0,10,0" Padding="5"/>
+            <Button x:Name="ConfirmButton" Content="Confirm Path" Grid.Column="1" Padding="5"/>
+        </Grid>
+    </StackPanel>
+</Window>
+"@
+
+[xml]$x = $xaml
+$reader = (New-Object System.Xml.XmlNodeReader $x)
+$window = [Windows.Markup.XamlReader]::Load($reader)
+
+$window.Title = $Title
+
+$textBox = $window.FindName("PathTextBox")
+$browseButton = $window.FindName("BrowseButton")
+$confirmButton = $window.FindName("ConfirmButton")
+
+$textBox.Text = $InitialPath 
+
+$browseButton.Add_Click({
+    $folderBrowser = New-Object System.Windows.Forms.FolderBrowserDialog
+    $folderBrowser.Description = $Description
+    
+    $currentText = $textBox.Text.Trim()
+    if (-not [string]::IsNullOrEmpty($currentText) -and (Test-Path -Path $currentText -PathType Container)) {
+        $folderBrowser.SelectedPath = $currentText
+    }
+
+    $result = $folderBrowser.ShowDialog()
+
+    if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
+        $textBox.Text = $folderBrowser.SelectedPath
+    }
+})
+
+$confirmButton.Add_Click({
+    $selectedPath = $textBox.Text.Trim()
+    
+    if (-not [string]::IsNullOrEmpty($selectedPath) -and (Test-Path -Path $selectedPath -PathType Container)) {
+        [Console]::WriteLine($selectedPath)
+        $window.Close()
+    } elseif ([string]::IsNullOrEmpty($selectedPath)) {
+        [System.Windows.MessageBox]::Show("Please browse or enter a folder path.", "Error", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Error)
+    } else {
+        [System.Windows.MessageBox]::Show("Error: The path is invalid or does not point to a folder.", "Error", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Error)
+    }
+})
+
+$window.ShowDialog() | Out-Null
+"""
+
+    if initial_path is None:
+        initial_path = ""
+        
+    tmp_path = ""
+    captured_output = ""
+    
+    try:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.ps1', delete=False, encoding='utf-8') as tmp_file:
+            tmp_file.write(ps_template)
+            tmp_path = tmp_file.name
+        
+        command = [
+            "powershell", 
+            "-ExecutionPolicy", "Bypass", 
+            "-File", tmp_path, 
+            "-InitialPath", initial_path,
+            "-Description", description,
+            "-Title", title
+        ]
+        
+        result = subprocess.run(
+            command,
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding='utf-8' 
+        )
+
+        captured_output = result.stdout.rstrip()
+        
+    except subprocess.CalledProcessError as e:
+        return "" 
+
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+    
+    final_choice = captured_output.splitlines()[-1].strip() if captured_output else ""
+    return final_choice
