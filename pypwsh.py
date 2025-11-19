@@ -1,18 +1,13 @@
-# VERSION = 0.1.0
-
 import subprocess
 import tempfile
 import os
 import sys
 
 def pypwsh_dropdown(options_list=["","Rose","Tulip"], allowBlankSubmission=True, removeBlankEntriesFromList=False, allowEditingListItems=True):
-    # --- START OF POWERSHELL TEMPLATE ---
     ps_template = r"""
 $allowBlankSubmission = $PLACE_HOLDER_allowBlankSubmission
 $removeBlankEntriesFromList = $PLACE_HOLDER_removeBlankEntriesFromList
 $allowEditingListItems = $PLACE_HOLDER_allowEditingListItems
-
-Write-Host "--- INITIALIZING SCRIPT ---"
 
 $xaml = @"
 <Window
@@ -45,7 +40,6 @@ if ($removeBlankEntriesFromList) {
 
 $OptionList = New-Object System.Collections.ArrayList
 $OptionList.AddRange($FilteredList)
-Write-Host "LOG: Initial list prepared. Items: $($OptionList.Count)"
 
 Add-Type -A PresentationFramework, WindowsBase, System.Xaml
 
@@ -59,11 +53,8 @@ $ApplyButton = $w.FindName("ApplyButton")
 $ConfirmButton = $w.FindName("ConfirmButton")
 $ResetButton = $w.FindName("ResetButton")
 
-# 💥 HELPER FUNCTION: To manage ApplyButton state (required for reliable UI)
 function Check-ApplyButtonState {
-    Write-Host "LOG: --- Check-ApplyButtonState called ---"
     if (-not $allowEditingListItems) { 
-        Write-Host "LOG: Editing disallowed. Exiting."
         return 
     }
 
@@ -76,78 +67,60 @@ function Check-ApplyButtonState {
         $isValidText = $allowBlankSubmission -or ($currentText -ne "")
 
         $ApplyButton.IsEnabled = $isDifferent -and $isValidText
-        Write-Host "LOG: Selected Item: '$selectedItem'"
-        Write-Host "LOG: Current Text:  '$currentText'"
-        Write-Host "LOG: Text changed (isDifferent): $isDifferent"
-        Write-Host "LOG: Text is valid (isValidText): $isValidText"
-        Write-Host "LOG: ApplyButton.IsEnabled set to: $($ApplyButton.IsEnabled)"
     } else {
-        Write-Host "LOG: No item selected (Index: $selectedIndex). ApplyButton disabled."
         $ApplyButton.IsEnabled = $false
     }
 }
 
 function Update-ComboBox {
-    Write-Host "LOG: --- Update-ComboBox called ---"
     [void]$ComboBox.Items.Clear()
     foreach ($item in $OptionList) {
         [void]$ComboBox.Items.Add($item)
     }
     [void]($ComboBox.SelectedIndex = 0)
-    Write-Host "LOG: ComboBox updated and SelectedIndex set to 0."
     
-    # MODIFIED: Ensure state is explicitly set on load/update
     if (-not $allowEditingListItems) {
         $EditTextBox.IsEnabled = $false
         $ApplyButton.IsEnabled = $false
-        Write-Host "LOG: Editing disallowed. Controls forced disabled."
     } else {
         $EditTextBox.IsEnabled = $true
         $ApplyButton.IsEnabled = $true 
-        Write-Host "LOG: Editing allowed. Controls forced enabled."
     }
 }
 
 $ComboBox.Add_SelectionChanged({
-    Write-Host "LOG: *** SelectionChanged event fired ***"
     $selectedIndex = $ComboBox.SelectedIndex
     if ($selectedIndex -ge 0) {
         $itemValue = $OptionList[$selectedIndex]
         
-        # Setting EditTextBox.Text here WILL trigger TextChanged event.
         $EditTextBox.Text = $itemValue 
-        Write-Host "LOG: EditTextBox.Text set to: '$itemValue'"
         
         if ($allowEditingListItems) {
             $EditTextBox.IsEnabled = $true
         }
         
-        Check-ApplyButtonState # For redundancy
+        Check-ApplyButtonState 
     }
 })
 
 $ApplyButton.Add_Click({
-    Write-Host "LOG: *** ApplyButton Clicked ***"
     if (-not $allowEditingListItems) { 
-        Write-Host "LOG: Editing disallowed. Returning."
         return 
     }
 
     $selectedIndex = $ComboBox.SelectedIndex
     if ($selectedIndex -ge 0) {
         $OptionList[$selectedIndex] = $EditTextBox.Text
-        Write-Host "LOG: List item at index $selectedIndex updated to: '$($EditTextBox.Text)'"
         
         Update-ComboBox
         
         [void]($ComboBox.SelectedIndex = $selectedIndex)
         
-        Check-ApplyButtonState # Check state after successful apply
+        Check-ApplyButtonState 
     }
 })
 
 $ResetButton.Add_Click({
-    Write-Host "LOG: *** ResetButton Clicked ***"
     $OptionList.Clear()
     
     if ($removeBlankEntriesFromList) {
@@ -158,51 +131,38 @@ $ResetButton.Add_Click({
     
     $OptionList.AddRange($ResetFilteredList)
     Update-ComboBox
-    Check-ApplyButtonState # Check state after reset
+    Check-ApplyButtonState 
     [System.Windows.MessageBox]::Show("List restored to original entries.", "Reset Complete")
 })
 
 $ConfirmButton.Add_Click({
-    Write-Host "LOG: *** ConfirmButton Clicked ***"
     $ChosenOption = $OptionList[$ComboBox.SelectedIndex]
     
     if ($ChosenOption -eq "" -and $allowBlankSubmission -eq $false) {
-        Write-Host "LOG: Submission failed: Blank entry disallowed."
         [System.Windows.MessageBox]::Show("Submission failed: Blank entries are not allowed.", "Error", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Warning)
     } else {
-        Write-Host "LOG: Choice confirmed: '$ChosenOption'"
         [Console]::WriteLine($ChosenOption) 
         $w.Close()
     }
 })
 
-# 💥 HANDLER: Calls helper function on TextChanged (crucial for dynamic state)
 $EditTextBox.Add_TextChanged({
-    Write-Host "LOG: *** EditTextBox TextChanged event fired ***"
     if (-not $allowEditingListItems) { return }
     Check-ApplyButtonState
 })
 
-# --- INITIALIZATION SEQUENCE ---
 Update-ComboBox
 
-# Ensure the EditTextBox text is set to the selected value upon load
-# This triggers the TextChanged event, which calls Check-ApplyButtonState
 $EditTextBox.Text = $OptionList[$ComboBox.SelectedIndex] 
-Write-Host "LOG: Initial EditTextBox.Text set to: '$($EditTextBox.Text)'"
 
-Check-ApplyButtonState # Final safety check
-Write-Host "LOG: Final state check before showing dialog."
+Check-ApplyButtonState 
 
 $w.ShowDialog() | Out-Null
-Write-Host "--- DIALOG CLOSED ---"
 """
-    # --- END OF POWERSHELL TEMPLATE ---
 
     ps_list_items = ', '.join(f'"{item}"' for item in options_list)
     ps_initial_list = f'@({ps_list_items})'
     
-    # 💥 FIX: Ensure PowerShell sees $true or $false, not just "true" or "false"
     ps_allow_editing = f"${str(allowEditingListItems).lower()}"
     ps_allow_blank = f"${str(allowBlankSubmission).lower()}"
     ps_remove_blank = f"${str(removeBlankEntriesFromList).lower()}"
@@ -212,7 +172,7 @@ Write-Host "--- DIALOG CLOSED ---"
     ).replace(
         "$PLACE_HOLDER_removeBlankEntriesFromList", ps_remove_blank
     ).replace(
-        "$PLACE_HOLDER_allowEditingListItems", ps_allow_editing # This is the key fix
+        "$PLACE_HOLDER_allowEditingListItems", ps_allow_editing 
     ).replace(
         "$PLACE_HOLDER_InitialList", ps_initial_list
     )
@@ -225,33 +185,164 @@ Write-Host "--- DIALOG CLOSED ---"
             tmp_file.write(script_content)
             tmp_path = tmp_file.name
         
-        # Execute PowerShell script
         result = subprocess.run(
             ["powershell", "-ExecutionPolicy", "Bypass", "-File", tmp_path],
             check=True,
             capture_output=True,
             text=True,
-            encoding='utf-8' # Ensure consistent encoding
+            encoding='utf-8' 
         )
 
         captured_output = result.stdout.rstrip()
         
-        # LOGGING FIX: Print the full captured output to the Python console
-        sys.stderr.write("\n--- POWERSHELL DEBUG LOGS ---\n")
-        sys.stderr.write(result.stdout)
-        sys.stderr.write("-----------------------------\n")
-        
     except subprocess.CalledProcessError as e:
-        sys.stderr.write("\n--- POWERSHELL ERROR LOGS ---\n")
-        sys.stderr.write(f"Error Code: {e.returncode}\n")
-        sys.stderr.write(e.stderr)
-        sys.stderr.write("-----------------------------\n")
         return ""
 
     finally:
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
     
-    # Return only the final choice (which is the last line printed by [Console]::WriteLine)
+    # Filter for the actual choice, which is the last non-empty line printed to stdout via [Console]::WriteLine
     final_choice = [line for line in captured_output.splitlines() if line][-1] if captured_output else ""
     return final_choice
+
+def pypwsh_filebrowse(initial_path="", filter="All Files (*.*)|*.*", title="Select a File"):
+    ps_template = r"""
+param(
+    [string]$InitialPath,
+    [string]$Filter,
+    [string]$Title
+)
+
+# 1. Load the necessary WPF assemblies and required WinForms assembly for OpenFileDialog
+Add-Type -AssemblyName PresentationFramework, WindowsBase, System.Xaml, System.Windows.Forms
+
+# 2. XAML UI definition (Embedded)
+$xaml = @"
+<Window
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="File Path Browser"
+    Width="500" Height="250"
+    ResizeMode="NoResize">
+    <StackPanel Margin="15">
+        <Label Content="Selected File Path:" Margin="0,0,0,5"/>
+        <TextBox
+            x:Name="PathTextBox"
+            Height="60"
+            TextWrapping="Wrap"
+            AcceptsReturn="True"
+            VerticalScrollBarVisibility="Auto"
+            Margin="0,0,0,15" />
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="100"/>
+            </Grid.ColumnDefinitions>
+            <Button 
+                x:Name="BrowseButton" Content="Browse File" Grid.Column="0" Margin="0,0,10,0" Padding="5"/>
+            <Button x:Name="ConfirmButton" Content="Confirm Path" Grid.Column="1" Padding="5"/>
+        </Grid>
+    </StackPanel>
+</Window>
+"@
+
+[xml]$x = $xaml
+$reader = (New-Object System.Xml.XmlNodeReader $x)
+$window = [Windows.Markup.XamlReader]::Load($reader)
+
+# 3. Get controls
+$textBox = $window.FindName("PathTextBox")
+$browseButton = $window.FindName("BrowseButton")
+$confirmButton = $window.FindName("ConfirmButton")
+
+# Set initial path in TextBox
+$textBox.Text = $InitialPath 
+
+# 4. Define Browse Button Action (using OpenFileDialog for files)
+$browseButton.Add_Click({
+    # Create the file browser object
+    $fileBrowser = New-Object System.Windows.Forms.OpenFileDialog
+    
+    # Set filters and title from parameters
+    $fileBrowser.Filter = $Filter
+    $fileBrowser.Title = $Title
+
+    # Set initial directory if the current text is a directory
+    $currentText = $textBox.Text.Trim()
+    if (-not [string]::IsNullOrEmpty($currentText) -and (Test-Path -Path $currentText -PathType Container)) {
+        $fileBrowser.InitialDirectory = $currentText
+    } elseif (-not [string]::IsNullOrEmpty($currentText) -and (Test-Path -Path $currentText -PathType Leaf)) {
+        $fileBrowser.InitialDirectory = [System.IO.Path]::GetDirectoryName($currentText)
+        $fileBrowser.FileName = [System.IO.Path]::GetFileName($currentText)
+    }
+
+    # Show the dialog
+    $result = $fileBrowser.ShowDialog()
+
+    # Check if the user clicked OK
+    if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
+        # Update the TextBox with the selected path
+        $textBox.Text = $fileBrowser.FileName
+    }
+})
+
+# 5. Define Confirm Button Action
+$confirmButton.Add_Click({
+    $selectedPath = $textBox.Text.Trim()
+    
+    if (Test-Path -Path $selectedPath -PathType Leaf) {
+        [Console]::WriteLine($selectedPath) # Output the final choice for Python to capture
+        $window.Close()
+    } elseif ([string]::IsNullOrEmpty($selectedPath)) {
+        [System.Windows.MessageBox]::Show("Please browse or enter a file path.", "Error", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Error)
+    } else {
+        [System.Windows.MessageBox]::Show("Error: The path is invalid or does not point to a file.", "Error", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Error)
+    }
+})
+
+# 6. Display the window
+$window.ShowDialog() | Out-Null
+"""
+
+    if initial_path is None:
+        initial_path = ""
+        
+    tmp_path = ""
+    captured_output = ""
+    
+    try:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.ps1', delete=False, encoding='utf-8') as tmp_file:
+            tmp_file.write(ps_template)
+            tmp_path = tmp_file.name
+        
+        command = [
+            "powershell", 
+            "-ExecutionPolicy", "Bypass", 
+            "-File", tmp_path, 
+            "-InitialPath", initial_path,
+            "-Filter", filter,
+            "-Title", title
+        ]
+        
+        result = subprocess.run(
+            command,
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding='utf-8' 
+        )
+
+        captured_output = result.stdout.rstrip()
+        
+    except subprocess.CalledProcessError as e:
+        return "" 
+
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+    
+    final_choice = captured_output.splitlines()[-1].strip() if captured_output else ""
+    return final_choice
+
+
