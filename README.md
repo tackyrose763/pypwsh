@@ -17,7 +17,7 @@ This project uses an embeddable Python distribution that is bundled alongside th
   * **Project Structure:**
       * The main script is `pypwsh.py`.
       * The embeddable Python distribution is located inside the `rose_core` folder, within a subdirectory named `_pyemb` (i.e., `rose_core\_pyemb`).
-  * **Python 3.14 (Embeddable Distribution):** The `_pyemb` directory contains the Python executables. This distribution is assumed to have `pip` and `win32com` pre-installed for automation tasks.
+  * **Python 3.14 (Embeddable Distribution):** The `_pyemb` directory contains the Python executables. This distribution comes with `pip` and `win32com` pre-installed for automation tasks.
   * **Windows PowerShell:** Available by default on all modern Windows operating systems, it is used by the script to run the GUI functions.
 
 ### 2\. Environment Setup
