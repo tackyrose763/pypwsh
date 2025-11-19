@@ -1,5 +1,9 @@
 # PyPwsh - Python and PowerShell GUI Bridge
 
+[![PyPI Version](https://img.shields.io/pypi/v/pypwsh.svg)](https://pypi.org/project/pypwsh/)
+[![License](https://img.shields.io/github/license/tackyrose763/pypwsh.svg)](https://github.com/tackyrose763/pypwsh/blob/main/LICENSE)
+[![Python Version](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
+
 `pypwsh.py` is a Python module that leverages Windows PowerShell and XAML/WPF/WinForms to provide simple, native Windows graphical user interface (GUI) elements like dropdown menus, file selectors, and folder browsers. This allows Python scripts to easily integrate rich user input without requiring external Python GUI libraries.
 
 -----
